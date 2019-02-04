@@ -184,7 +184,7 @@ Configuring Synapse
 Before you can start Synapse, you will need to generate a configuration
 file. To do this, run (in your virtualenv, as before)::
 
-    cd ~/.synapse
+    cd ~/synapse
     python -m synapse.app.homeserver \
         --server-name my.domain.name \
         --config-path homeserver.yaml \
@@ -220,7 +220,7 @@ is configured to use TLS with a self-signed certificate. If you would like
 to do initial test with a client without having to setup a reverse proxy,
 you can temporarly use another certificate. (Note that a self-signed
 certificate is fine for `Federation`_). You can do so by changing
-``tls_certificate_path``, ``tls_private_key_path`` and ``tls_dh_params_path``
+``tls_certificate_path`` and ``tls_private_key_path``
 in ``homeserver.yaml``; alternatively, you can use a reverse-proxy, but be sure
 to read `Using a reverse proxy with Synapse`_ when doing so.
 
@@ -333,12 +333,38 @@ https://developer.github.com/changes/2014-04-25-user-content-security for more d
 Platform-Specific Instructions
 ==============================
 
-Debian
-------
+Debian/Ubuntu
+-------------
 
-Matrix provides official Debian packages via apt from https://matrix.org/packages/debian/.
-Note that these packages do not include a client - choose one from
-https://matrix.org/docs/projects/try-matrix-now.html (or build your own with one of our SDKs :)
+Matrix.org packages
+~~~~~~~~~~~~~~~~~~~
+
+Matrix.org provides Debian/Ubuntu packages of the latest stable version of
+Synapse via https://matrix.org/packages/debian/. To use them::
+
+    sudo apt install -y lsb-release curl apt-transport-https
+    echo "deb https://matrix.org/packages/debian `lsb_release -cs` main" |
+        sudo tee /etc/apt/sources.list.d/matrix-org.list
+    curl "https://matrix.org/packages/debian/repo-key.asc" |
+        sudo apt-key add -
+    sudo apt update
+    sudo apt install matrix-synapse-py3
+
+Downstream Debian/Ubuntu packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For ``buster`` and ``sid``, Synapse is available in the Debian repositories and
+it should be possible to install it with simply::
+
+    sudo apt install matrix-synapse
+
+There is also a version of ``matrix-synapse`` in ``stretch-backports``. Please
+see the `Debian documentation on backports
+<https://backports.debian.org/Instructions/>`_ for information on how to use
+them.
+
+We do not recommend using the packages in downstream Ubuntu at this time, as
+they are old and suffer from known security vulnerabilities.
 
 Fedora
 ------
@@ -796,8 +822,7 @@ A manual password reset can be done via direct database access as follows.
 
 First calculate the hash of the new password::
 
-    $ source ~/.synapse/bin/activate
-    $ ./scripts/hash_password
+    $ ~/synapse/env/bin/hash_password
     Password:
     Confirm password:
     $2a$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
