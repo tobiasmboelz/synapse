@@ -73,7 +73,6 @@ class EndToEndKeyStore(SQLBaseStore):
     def get_e2e_device_keys(
         self, query_list, include_all_devices=False,
         include_deleted_devices=False,
-        user_id=None,
     ):
         """Fetch a list of device keys.
         Args:
@@ -83,7 +82,6 @@ class EndToEndKeyStore(SQLBaseStore):
             include_deleted_devices (bool): whether to include null entries for
                 devices which no longer exist (but were in the query_list).
                 This option only takes effect if include_all_devices is true.
-            user_id (string): The user requesting the device keys.
         Returns:
             Dict mapping from user-id to dict mapping from device_id to
             dict containing "key_json", "device_display_name".
@@ -93,12 +91,13 @@ class EndToEndKeyStore(SQLBaseStore):
 
         results = yield self.runInteraction(
             "get_e2e_device_keys", self._get_e2e_device_keys_txn,
-            query_list, include_all_devices, include_deleted_devices, user_id
+            query_list, include_all_devices, include_deleted_devices
         )
 
         for user_id, device_keys in iteritems(results):
             for device_id, device_info in iteritems(device_keys):
                 device_info["keys"] = db_to_json(device_info.pop("key_json"))
+                # add cross-signing signatures to the keys
                 if "signatures" in device_info:
                     for sig_user_id, sigs in device_info["signatures"].items():
                         device_info["keys"].setdefault("signatures", {}) \
@@ -110,7 +109,6 @@ class EndToEndKeyStore(SQLBaseStore):
     def _get_e2e_device_keys_txn(
         self, txn, query_list, include_all_devices=False,
         include_deleted_devices=False,
-        from_user_id=None,
     ):
         query_clauses = []
         query_params = []
@@ -136,7 +134,7 @@ class EndToEndKeyStore(SQLBaseStore):
                 signature_query_params.append(device_id)
 
             signature_query_clause += " AND user_id = ?"
-            signature_query_params.append(from_user_id if from_user_id else user_id)
+            signature_query_params.append(user_id)
 
             query_clauses.append(query_clause)
             signature_query_clauses.append(signature_query_clause)
