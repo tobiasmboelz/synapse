@@ -388,8 +388,9 @@ class E2eKeysHandler(object):
 
             # if we have a previous self-signing key, make sure that it is
             # acknowledged, to prevent users from accidentally overwriting a
-            # key
-            if old_self_signing_key:
+            # key (unless they're re-uploading the same key)
+            if old_self_signing_key \
+                    and old_self_signing_key["keys"] != keys["self_signing_key"]["keys"]:
                 if "replaces" not in self_signing_key:
                     raise SynapseError(
                         400,
@@ -539,11 +540,16 @@ class E2eKeysHandler(object):
 
                         signature = key["signatures"][user_id][self_signing_key_id]
 
+                        stored_key = devices[device]["keys"]
+                        if self_signing_key_id in stored_key.get("signatures", {}) \
+                                                            .get(user_id, {}):
+                            # we already have the signature, so we can skip it
+                            continue
+
                         # make sure that the key submitted matches what we have stored
                         del key["signatures"]
                         if "unsigned" in key:
                             del key["unsigned"]
-                        stored_key = devices[device]["keys"]
                         if "signatures" in stored_key:
                             del stored_key["signatures"]
                         if "unsigned" in stored_key:
@@ -613,7 +619,9 @@ class E2eKeysHandler(object):
                     try:
                         # get the user's self-signing key, to make sure it
                         # matches what was sent
-                        user_key = yield self.store.get_e2e_self_signing_key(user)
+                        user_key = yield self.store.get_e2e_self_signing_key(
+                            user, user_id
+                        )
                         if user_key is None:
                             logger.error(
                                 "upload signature: no user key found for %s", user
@@ -662,6 +670,11 @@ class E2eKeysHandler(object):
                                 Codes.INVALID_SIGNATURE
                             )
 
+                        if user_signing_key_id in user_key.get("signatures", {}) \
+                                                          .get(user_id, {}):
+                            # we already have the signature, so we can skip it
+                            continue
+
                         signature = key["signatures"][user_id][user_signing_key_id]
 
                         # make sure that what was submitted matches the key that we have
@@ -673,7 +686,6 @@ class E2eKeysHandler(object):
                         if "unsigned" in user_key:
                             del user_key["unsigned"]
                         if key != user_key:
-                            # FIXME: error
                             logger.error(
                                 "upload signature: key does not match %s vs %s",
                                 key, user_key
