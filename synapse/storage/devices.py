@@ -21,7 +21,7 @@ from canonicaljson import json
 
 from twisted.internet import defer
 
-from synapse.api.errors import StoreError
+from synapse.api.errors import Codes, StoreError
 from synapse.metrics.background_process_metrics import run_as_background_process
 from synapse.storage.background_updates import BackgroundUpdateStore
 from synapse.util.caches.descriptors import cached, cachedInlineCallbacks, cachedList
@@ -111,8 +111,25 @@ class DeviceStore(BackgroundUpdateStore):
                 desc="store_device",
                 or_ignore=True,
             )
+            if not inserted:
+                # if the device already exists, check if it's a real device, or
+                # if the device ID is reserver by something else
+                hidden = yield self._simple_select_one_onecol(
+                    "devices",
+                    keyvalues={
+                        "user_id": user_id,
+                        "device_id": device_id
+                    },
+                    retcol="hidden"
+                )
+                if hidden:
+                    raise StoreError(
+                        400, "The device ID is reserved", Codes.FORBIDDEN
+                    )
             self.device_id_exists_cache.prefill(key, True)
             defer.returnValue(inserted)
+        except StoreError as e:
+            raise e
         except Exception as e:
             logger.error("store_device with device_id=%s(%r) user_id=%s(%r)"
                          " display_name=%s(%r) failed: %s",
@@ -135,7 +152,7 @@ class DeviceStore(BackgroundUpdateStore):
         """
         return self._simple_select_one(
             table="devices",
-            keyvalues={"user_id": user_id, "device_id": device_id},
+            keyvalues={"user_id": user_id, "device_id": device_id, "hidden": False},
             retcols=("user_id", "device_id", "display_name"),
             desc="get_device",
         )
@@ -152,7 +169,7 @@ class DeviceStore(BackgroundUpdateStore):
         """
         yield self._simple_delete_one(
             table="devices",
-            keyvalues={"user_id": user_id, "device_id": device_id},
+            keyvalues={"user_id": user_id, "device_id": device_id, "hidden": False},
             desc="delete_device",
         )
 
@@ -172,7 +189,7 @@ class DeviceStore(BackgroundUpdateStore):
             table="devices",
             column="device_id",
             iterable=device_ids,
-            keyvalues={"user_id": user_id},
+            keyvalues={"user_id": user_id, "hidden": False},
             desc="delete_devices",
         )
         for device_id in device_ids:
@@ -198,7 +215,7 @@ class DeviceStore(BackgroundUpdateStore):
             return defer.succeed(None)
         return self._simple_update_one(
             table="devices",
-            keyvalues={"user_id": user_id, "device_id": device_id},
+            keyvalues={"user_id": user_id, "device_id": device_id, "hidden": False},
             updatevalues=updates,
             desc="update_device",
         )
@@ -216,7 +233,7 @@ class DeviceStore(BackgroundUpdateStore):
         """
         devices = yield self._simple_select_list(
             table="devices",
-            keyvalues={"user_id": user_id},
+            keyvalues={"user_id": user_id, "hidden": False},
             retcols=("user_id", "device_id", "display_name"),
             desc="get_devices_by_user"
         )

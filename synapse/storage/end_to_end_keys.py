@@ -352,7 +352,8 @@ class EndToEndKeyStore(SQLBaseStore):
             values={
                 "user_id": user_id,
                 "device_id": pubkey,
-                "display_name": key_type + " signing key"
+                "display_name": key_type + " signing key",
+                "hidden": True
             },
             desc="store_master_key_device"
         )

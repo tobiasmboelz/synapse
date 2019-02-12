@@ -444,3 +444,34 @@ class E2eKeysHandlerTestCase(unittest.TestCase):
             devices["device_keys"][local_user]["def"],
             device_key_2
         )
+
+    @defer.inlineCallbacks
+    def test_self_signing_key_doesnt_show_up_as_device(self):
+        """signing keys should be hidden when fetching a user's devices"""
+        local_user = "@boris:" + self.hs.hostname
+        keys1 = {
+            "self_signing_key": {
+                # private key: 2lonYOM6xYKdEsO+6KrC766xBcHnYnim1x/4LFGF8B0
+                "user_id": local_user,
+                "usage": ["self_signing"],
+                "keys": {
+                    "ed25519:nqOvzeuGWT/sRx3h7+MHoInYj3Uk2LD/unI9kDYcHwk":
+                    "nqOvzeuGWT/sRx3h7+MHoInYj3Uk2LD/unI9kDYcHwk"
+                }
+            }
+        }
+        yield self.handler.upload_signing_keys_for_user(local_user, keys1)
+
+        res = None
+        try:
+            yield self.hs.get_device_handler().check_device_registered(
+                user_id=local_user,
+                device_id="nqOvzeuGWT/sRx3h7+MHoInYj3Uk2LD/unI9kDYcHwk",
+                initial_device_display_name="new display name",
+            )
+        except errors.SynapseError as e:
+            res = e.code
+        self.assertEqual(res, 400)
+
+        res = yield self.handler.query_local_devices({local_user: None})
+        self.assertDictEqual(res, {local_user: {}})

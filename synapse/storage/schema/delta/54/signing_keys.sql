@@ -42,3 +42,7 @@ CREATE TABLE user_signature_stream (
 );
 
 CREATE INDEX user_signature_stream_idx ON user_signature_stream(stream_id, from_user_id);
+
+-- device list needs to know which ones are "real" devices, and which ones are
+-- just used to avoid collisions
+ALTER TABLE devices ADD COLUMN hidden BOOLEAN DEFAULT FALSE;
