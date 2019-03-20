@@ -106,7 +106,8 @@ class DeviceStore(BackgroundUpdateStore):
                 values={
                     "user_id": user_id,
                     "device_id": device_id,
-                    "display_name": initial_device_display_name
+                    "display_name": initial_device_display_name,
+                    "hidden": False
                 },
                 desc="store_device",
                 or_ignore=True,
