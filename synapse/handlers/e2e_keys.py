@@ -22,7 +22,7 @@ from canonicaljson import encode_canonical_json, json
 
 from twisted.internet import defer
 
-from signedjson.key import decode_verify_key_bytes
+from signedjson.key import decode_verify_key_bytes, encode_verify_key_base64
 from signedjson.sign import SignatureVerifyException, verify_signed_json
 
 from synapse.api.errors import Codes, CodeMessageException, FederationDeniedError, \
@@ -471,10 +471,12 @@ class E2eKeysHandler(object):
         deviceids = []
         if "self_signing_key" in keys:
             yield self.store.set_e2e_self_signing_key(user_id, self_signing_key)
-            deviceids.append(key_id)
+            deviceids.append(encode_verify_key_base64(verify_key))
         if "user_signing_key" in keys:
             yield self.store.set_e2e_user_signing_key(user_id, user_signing_key)
-            deviceids.append(_get_verify_key_from_key_info(user_signing_key)[0])
+            deviceids.append(encode_verify_key_base64(
+                _get_verify_key_from_key_info(user_signing_key)[1])
+            )
 
         if len(deviceids):
             yield self.device_handler.notify_device_update(user_id, deviceids)
