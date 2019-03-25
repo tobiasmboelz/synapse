@@ -570,10 +570,10 @@ class TransactionQueue(object):
             Edu(
                 origin=self.server_name,
                 destination=destination,
-                edu_type="m.device_list_update",
+                edu_type=edu_type,
                 content=content,
             )
-            for content in results
+            for (edu_type, content) in results
         )
         defer.returnValue((edus, stream_id, now_stream_id))
 

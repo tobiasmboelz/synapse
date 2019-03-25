@@ -28,6 +28,8 @@ from signedjson.sign import SignatureVerifyException, verify_signed_json
 from synapse.api.errors import Codes, CodeMessageException, FederationDeniedError, \
     SynapseError
 from synapse.types import UserID, get_domain_from_id
+from synapse.util.async_helpers import Linearizer
+from synapse.util.caches.expiringcache import ExpiringCache
 from synapse.util.logcontext import make_deferred_yieldable, run_in_background
 from synapse.util.retryutils import NotRetryingDestination
 
@@ -44,10 +46,17 @@ class E2eKeysHandler(object):
         self.is_mine = hs.is_mine
         self.clock = hs.get_clock()
 
+        self._edu_updater = SigningKeyEduUpdater(hs, self)
+
+        federation_registry = hs.get_federation_registry()
+
+        federation_registry.register_edu_handler(
+            "m.signing_key_update", self._edu_updater.incoming_signing_key_update,
+        )
         # doesn't really work as part of the generic query API, because the
         # query request requires an object POST, but we abuse the
         # "query handler" interface.
-        hs.get_federation_registry().register_query_handler(
+        federation_registry.register_query_handler(
             "client_keys", self.on_federation_query_client_keys
         )
 
@@ -131,6 +140,10 @@ class E2eKeysHandler(object):
                 r = remote_queries_not_in_cache.setdefault(domain, {})
                 r[user_id] = remote_queries[user_id]
 
+        self_signing_keys = yield self.query_self_signing_keys(
+            device_keys_query, from_user_id
+        )
+
         # Now fetch any devices that we don't have in our cache
         @defer.inlineCallbacks
         def do_remote_query(destination):
@@ -146,6 +159,10 @@ class E2eKeysHandler(object):
                     if user_id in destination_query:
                         results[user_id] = keys
 
+                for user_id, key in remote_result["self_signing_keys"].items():
+                    if user_id in destination_query:
+                        self_signing_keys[user_id] = key
+
             except Exception as e:
                 failures[destination] = _exception_to_failure(e)
 
@@ -154,6 +171,27 @@ class E2eKeysHandler(object):
             for destination in remote_queries_not_in_cache
         ], consumeErrors=True))
 
+        defer.returnValue({
+            "device_keys": results, "failures": failures,
+            "self_signing_keys": self_signing_keys,
+        })
+
+    @defer.inlineCallbacks
+    def query_self_signing_keys(self, query, from_user_id=None):
+        """Get self-signing keys for users
+
+        Args:
+            query (dict[string, *]): map from user_id.  This function only looks
+                at the dict's keys, and the values are ignored, so the query
+                format used for query_devices can be used.
+            from_user_id (str): the user making the query.  This is used when
+                adding cross-signing signatures to limit what signatures users
+                can see.
+
+        Returns:
+            defer.Deferred: (resolves to dict[string, dict]): map from user_id
+                -> self signing key
+        """
         self_signing_keys = {}
 
         @defer.inlineCallbacks
@@ -166,13 +204,10 @@ class E2eKeysHandler(object):
 
         yield make_deferred_yieldable(defer.gatherResults([
             run_in_background(get_self_signing_key, user_id)
-            for user_id in local_query.keys()
+            for user_id in query.keys()
         ]))
 
-        defer.returnValue({
-            "device_keys": results, "failures": failures,
-            "self_signing_keys": self_signing_keys,
-        })
+        return self_signing_keys
 
     @defer.inlineCallbacks
     def query_local_devices(self, query):
@@ -226,7 +261,11 @@ class E2eKeysHandler(object):
         """
         device_keys_query = query_body.get("device_keys", {})
         res = yield self.query_local_devices(device_keys_query)
-        defer.returnValue({"device_keys": res})
+        self_signing_keys = yield self.query_self_signing_keys(device_keys_query)
+        defer.returnValue({
+            "device_keys": res,
+            "self_signing_keys": self_signing_keys,
+        })
 
     @defer.inlineCallbacks
     def claim_one_time_keys(self, query, timeout):
@@ -800,3 +839,87 @@ def _one_time_keys_match(old_key_json, new_key):
     new_key_copy.pop("signatures", None)
 
     return old_key == new_key_copy
+
+
+class SigningKeyEduUpdater(object):
+    "Handles incoming signing key updates from federation and updates the DB"
+
+    def __init__(self, hs, e2e_keys_handler):
+        self.store = hs.get_datastore()
+        self.federation = hs.get_federation_client()
+        self.clock = hs.get_clock()
+        self.e2e_keys_handler = e2e_keys_handler
+
+        self._remote_edu_linearizer = Linearizer(name="remote_signing_key")
+
+        # user_id -> list of updates waiting to be handled.
+        self._pending_updates = {}
+
+        # Recently seen stream ids. We don't bother keeping these in the DB,
+        # but they're useful to have them about to reduce the number of spurious
+        # resyncs.
+        self._seen_updates = ExpiringCache(
+            cache_name="signing_key_update_edu",
+            clock=self.clock,
+            max_len=10000,
+            expiry_ms=30 * 60 * 1000,
+            iterable=True,
+        )
+
+    @defer.inlineCallbacks
+    def incoming_signing_key_update(self, origin, edu_content):
+        """Called on incoming signing key update from federation. Responsible for
+        parsing the EDU and adding to pending updates list.
+
+        Args:
+            origin (string): the server that sent the EDU
+            edu_content (dict): the contents of the EDU
+        """
+
+        user_id = edu_content.pop("user_id")
+        self_signing_key = edu_content.pop("self_signing_key")
+
+        if get_domain_from_id(user_id) != origin:
+            # TODO: Raise?
+            logger.warning("Got signing key update edu for %r from %r", user_id, origin)
+            return
+
+        room_ids = yield self.store.get_rooms_for_user(user_id)
+        if not room_ids:
+            # We don't share any rooms with this user. Ignore update, as we
+            # probably won't get any further updates.
+            return
+
+        self._pending_updates.setdefault(user_id, []).append(
+            (self_signing_key, edu_content)
+        )
+
+        yield self._handle_signing_key_updates(user_id)
+
+    @defer.inlineCallbacks
+    def _handle_signing_key_updates(self, user_id):
+        """Actually handle pending updates.
+
+        Args:
+            user_id (string): the user whose updates we are processing
+        """
+
+        device_handler = self.e2e_keys_handler.device_handler
+
+        with (yield self._remote_edu_linearizer.queue(user_id)):
+            pending_updates = self._pending_updates.pop(user_id, [])
+            if not pending_updates:
+                # This can happen since we batch updates
+                return
+
+            device_ids = []
+
+            for self_signing_key, edu_content in pending_updates:
+                yield self.store.set_e2e_self_signing_key(user_id, self_signing_key)
+                device_id = None
+                for k in self_signing_key["keys"].values():
+                    device_id = k
+                if device_id is not None:
+                    device_ids.append(device_id)
+
+            yield device_handler.notify_device_update(user_id, device_ids)

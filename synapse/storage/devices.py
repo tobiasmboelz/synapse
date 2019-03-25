@@ -15,7 +15,7 @@
 # limitations under the License.
 import logging
 
-from six import iteritems, itervalues
+from six import iteritems, iterkeys, itervalues
 
 from canonicaljson import json
 
@@ -428,7 +428,8 @@ class DeviceStore(BackgroundUpdateStore):
         """Get stream of updates to send to remote servers
 
         Returns:
-            (int, list[dict]): current stream id and list of updates
+            (int, list[(string, dict)]): current stream id and list of updates,
+                where each update is a pair of EDU type and EDU contents
         """
         now_stream_id = self._device_list_id_gen.get_current_token()
 
@@ -501,7 +502,27 @@ class DeviceStore(BackgroundUpdateStore):
                 else:
                     result["deleted"] = True
 
-                results.append(result)
+                results.append(("m.device_list_update", result))
+
+        user_devices = {}
+        for user_id, device_id in iterkeys(query_map):
+            if user_id not in user_devices:
+                user_devices[user_id] = set()
+            user_devices[user_id].add(device_id)
+            set(user_id for (user_id, device_id) in query_map.keys())
+        for user_id, devices in iteritems(user_devices):
+            signing_key = self._get_e2e_device_signing_key_txn(txn, user_id, "self")
+            if not signing_key:
+                continue
+            device_id = None
+            for k in signing_key["keys"].values():
+                device_id = k
+            if device_id in devices:
+                result = {
+                    "user_id": user_id,
+                    "self_signing_key": signing_key
+                }
+                results.append(("m.signing_key_update", result))
 
         return (now_stream_id, results)
 

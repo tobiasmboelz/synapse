@@ -145,7 +145,7 @@ class EndToEndKeyStore(SQLBaseStore):
             "    k.key_json"
             " FROM devices d"
             "    %s JOIN e2e_device_keys_json k USING (user_id, device_id)"
-            " WHERE %s"
+            " WHERE (%s) AND d.hidden = 0"
         ) % (
             "LEFT" if include_all_devices else "INNER",
             " OR ".join("(" + q + ")" for q in query_clauses)
