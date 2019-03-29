@@ -537,6 +537,7 @@ class EventsStore(StateGroupWorkerStore, EventFederationStore, EventsWorkerStore
         new_events = [
             event for event, ctx in event_contexts
             if not event.internal_metadata.is_outlier() and not ctx.rejected
+            and not event.internal_metadata.is_soft_failed()
         ]
 
         # start with the existing forward extremities
@@ -979,30 +980,7 @@ class EventsStore(StateGroupWorkerStore, EventFederationStore, EventsWorkerStore
                 if ev_type == EventTypes.Member
             )
 
-            for member in members_changed:
-                self._invalidate_cache_and_stream(
-                    txn, self.get_rooms_for_user_with_stream_ordering, (member,)
-                )
-
-            for host in set(get_domain_from_id(u) for u in members_changed):
-                self._invalidate_cache_and_stream(
-                    txn, self.is_host_joined, (room_id, host)
-                )
-                self._invalidate_cache_and_stream(
-                    txn, self.was_host_joined, (room_id, host)
-                )
-
-            self._invalidate_cache_and_stream(
-                txn, self.get_users_in_room, (room_id,)
-            )
-
-            self._invalidate_cache_and_stream(
-                txn, self.get_room_summary, (room_id,)
-            )
-
-            self._invalidate_cache_and_stream(
-                txn, self.get_current_state_ids, (room_id,)
-            )
+            self._invalidate_state_caches_and_stream(txn, room_id, members_changed)
 
     def _update_forward_extremities_txn(self, txn, new_forward_extremities,
                                         max_stream_order):
@@ -1427,21 +1405,6 @@ class EventsStore(StateGroupWorkerStore, EventFederationStore, EventsWorkerStore
             txn,
             table="state_events",
             values=state_values,
-        )
-
-        self._simple_insert_many_txn(
-            txn,
-            table="event_edges",
-            values=[
-                {
-                    "event_id": event.event_id,
-                    "prev_event_id": prev_id,
-                    "room_id": event.room_id,
-                    "is_state": True,
-                }
-                for event, _ in state_events_and_contexts
-                for prev_id, _ in event.prev_state
-            ],
         )
 
         # Prefill the event cache
