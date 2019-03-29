@@ -13,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
+
 from six import iteritems
 
 from canonicaljson import encode_canonical_json, json
@@ -20,8 +22,6 @@ from canonicaljson import encode_canonical_json, json
 from twisted.internet import defer
 
 from synapse.util.caches.descriptors import cached
-
-import time
 
 from ._base import SQLBaseStore, db_to_json
 

@@ -16,10 +16,10 @@
 
 import mock
 
-from twisted.internet import defer
-
 import signedjson.key as key
 import signedjson.sign as sign
+
+from twisted.internet import defer
 
 import synapse.api.errors
 import synapse.handlers.e2e_keys

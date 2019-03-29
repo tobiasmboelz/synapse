@@ -19,21 +19,23 @@ import logging
 from six import iteritems
 
 from canonicaljson import encode_canonical_json, json
+from signedjson.key import decode_verify_key_bytes, encode_verify_key_base64
+from signedjson.sign import SignatureVerifyException, verify_signed_json
+from unpaddedbase64 import decode_base64
 
 from twisted.internet import defer
 
-from signedjson.key import decode_verify_key_bytes, encode_verify_key_base64
-from signedjson.sign import SignatureVerifyException, verify_signed_json
-
-from synapse.api.errors import Codes, CodeMessageException, FederationDeniedError, \
-    SynapseError
+from synapse.api.errors import (
+    CodeMessageException,
+    Codes,
+    FederationDeniedError,
+    SynapseError,
+)
 from synapse.types import UserID, get_domain_from_id
 from synapse.util.async_helpers import Linearizer
 from synapse.util.caches.expiringcache import ExpiringCache
 from synapse.util.logcontext import make_deferred_yieldable, run_in_background
 from synapse.util.retryutils import NotRetryingDestination
-
-from unpaddedbase64 import decode_base64
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +201,7 @@ class E2eKeysHandler(object):
             try:
                 self_signing_keys[user_id] = \
                     yield self.store.get_e2e_self_signing_key(user_id, from_user_id)
-            except Exception as e:
+            except Exception:
                 pass
 
         yield make_deferred_yieldable(defer.gatherResults([
@@ -465,7 +467,7 @@ class E2eKeysHandler(object):
                     )
                 try:
                     verify_signed_json(self_signing_key, user_id, old_verify_key)
-                except SignatureVerifyException as e:
+                except SignatureVerifyException:
                     raise SynapseError(
                         400,
                         "Invalid signature on self-signing key",
@@ -499,7 +501,7 @@ class E2eKeysHandler(object):
                 )
             try:
                 verify_signed_json(user_signing_key, user_id, verify_key)
-            except SignatureVerifyException as e:
+            except SignatureVerifyException:
                 raise SynapseError(
                     400,
                     "Invalid signature on user-signing key",
@@ -614,7 +616,7 @@ class E2eKeysHandler(object):
                         }
                         try:
                             verify_signed_json(key, user_id, self_signing_verify_key)
-                        except SignatureVerifyException as e:
+                        except SignatureVerifyException:
                             logger.error("invalid signature on key")
                             raise SynapseError(
                                 400,
@@ -745,7 +747,7 @@ class E2eKeysHandler(object):
                         }
                         try:
                             verify_signed_json(key, user_id, user_signing_verify_key)
-                        except SignatureVerifyException as e:
+                        except SignatureVerifyException:
                             logger.error("invalid signature on key")
                             raise SynapseError(
                                 400,
