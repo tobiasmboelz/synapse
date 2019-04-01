@@ -209,7 +209,7 @@ class E2eKeysHandler(object):
             for user_id in query.keys()
         ]))
 
-        return self_signing_keys
+        defer.returnValue(self_signing_keys)
 
     @defer.inlineCallbacks
     def query_local_devices(self, query):
