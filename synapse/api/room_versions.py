@@ -53,7 +53,7 @@ class RoomVersion(object):
 class RoomVersions(object):
     V1 = RoomVersion(
         "1",
-        RoomDisposition.STABLE,
+        RoomDisposition.UNSTABLE,
         EventFormatVersions.V1,
         StateResolutionVersions.V1,
     )
@@ -65,7 +65,7 @@ class RoomVersions(object):
     )
     V2 = RoomVersion(
         "2",
-        RoomDisposition.STABLE,
+        RoomDisposition.UNSTABLE,
         EventFormatVersions.V1,
         StateResolutionVersions.V2,
     )
@@ -78,7 +78,7 @@ class RoomVersions(object):
 
 
 # the version we will give rooms which are created on this server
-DEFAULT_ROOM_VERSION = RoomVersions.V1
+DEFAULT_ROOM_VERSION = RoomVersions.V3
 
 
 KNOWN_ROOM_VERSIONS = {
