@@ -75,6 +75,12 @@ class RoomVersions(object):
         EventFormatVersions.V2,
         StateResolutionVersions.V2,
     )
+    TRAVIS_TEST_VERSION = RoomVersion(
+        "travis-test-version",
+        RoomDisposition.UNSTABLE,
+        EventFormatVersions.V2,
+        StateResolutionVersions.V2,
+    )
 
 
 # the version we will give rooms which are created on this server
@@ -87,5 +93,6 @@ KNOWN_ROOM_VERSIONS = {
         RoomVersions.V2,
         #RoomVersions.V3,
         RoomVersions.STATE_V2_TEST,
+        RoomVersions.TRAVIS_TEST_VERSION,
     )
 }   # type: dict[str, RoomVersion]
