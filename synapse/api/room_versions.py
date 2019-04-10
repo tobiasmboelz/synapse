@@ -85,7 +85,7 @@ KNOWN_ROOM_VERSIONS = {
     v.identifier: v for v in (
         RoomVersions.V1,
         RoomVersions.V2,
-        RoomVersions.V3,
+        #RoomVersions.V3,
         RoomVersions.STATE_V2_TEST,
     )
 }   # type: dict[str, RoomVersion]
