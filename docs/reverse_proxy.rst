@@ -32,6 +32,8 @@ Let's assume that we expect clients to connect to our server at
           listen [::]:443 ssl;
           server_name matrix.example.com;
 
+          client_max_body_size 10M;
+
           location /_matrix {
               proxy_pass http://localhost:8008;
               proxy_set_header X-Forwarded-For $remote_addr;
